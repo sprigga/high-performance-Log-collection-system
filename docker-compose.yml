@@ -1,0 +1,172 @@
+# version: '3.8'
+
+services:
+  # ==========================================
+  # 負載平衡層 - Nginx
+  # ==========================================
+  nginx:
+    image: nginx:alpine
+    container_name: log-nginx
+    ports:
+      # - "8080:80"  # 本機 8080 對應到容器 80
+      - "18723:80"  # 改用冷門端口避免衝突
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - fastapi-1
+      - fastapi-2
+    networks:
+      - log-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 應用層 - FastAPI 實例
+  # ==========================================
+  fastapi-1:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: log-fastapi-1
+    # command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2  # 原始設定
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 6    # 提升 workers 數量
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=loguser
+      - POSTGRES_PASSWORD=logpass
+      - POSTGRES_DB=logsdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - INSTANCE_NAME=fastapi-1
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - log-network
+    restart: unless-stopped
+
+  fastapi-2:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: log-fastapi-2
+    # command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2  # 原始設定
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4    # 提升 workers 數量
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=loguser
+      - POSTGRES_PASSWORD=logpass
+      - POSTGRES_DB=logsdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - INSTANCE_NAME=fastapi-2
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - log-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 背景工作程序 - Worker
+  # ==========================================
+  worker:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: log-worker
+    command: python worker.py
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=loguser
+      - POSTGRES_PASSWORD=logpass
+      - POSTGRES_DB=logsdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WORKER_NAME=worker-1
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - log-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 快取層 - Redis
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: log-redis
+    ports:
+      # - "6379:6379"
+      - "16891:6379"  # 改用冷門端口避免衝突
+    volumes:
+      - redis-data:/data
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 512mb 
+      --maxmemory-policy allkeys-lru
+    networks:
+      - log-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ==========================================
+  # 資料庫層 - PostgreSQL
+  # ==========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: log-postgres
+    ports:
+      # - "5432:5432"
+      - "15467:5432"  # 改用冷門端口避免衝突
+    environment:
+      - POSTGRES_USER=loguser
+      - POSTGRES_PASSWORD=logpass
+      - POSTGRES_DB=logsdb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=768MB"
+      - "-c"
+      - "synchronous_commit=off"
+      - "-c"
+      - "work_mem=8MB"
+    networks:
+      - log-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loguser -d logsdb"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+# ==========================================
+# 網路配置
+# ==========================================
+networks:
+  log-network:
+    driver: bridge
+
+# ==========================================
+# 資料持久化
+# ==========================================
+volumes:
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
