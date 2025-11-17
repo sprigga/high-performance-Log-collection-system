@@ -16,6 +16,11 @@ FastAPI (2 instances) → Redis Stream → Worker → PostgreSQL
 
 ### 🏗️ Architecture Diagram (PlantUML)
 
+![Architecture Diagram](uml/architecture_diagram.png)
+
+<details>
+<summary>PlantUML Source Code</summary>
+
 ```plantuml
 @startuml High-Performance Log Collection System Architecture
 
@@ -135,7 +140,14 @@ title High-Performance Log Collection System\nArchitecture Overview
 @enduml
 ```
 
+</details>
+
 ### 🔄 Component Interaction Sequence (PlantUML)
+
+![Sequence Diagram](uml/sequence_diagram.png)
+
+<details>
+<summary>PlantUML Source Code</summary>
 
 ```plantuml
 @startuml Log Writing Sequence
@@ -208,6 +220,8 @@ nginx --> client: 200 OK
 
 @enduml
 ```
+
+</details>
 
 ### 📊 Deployment Architecture (PlantUML)
 
