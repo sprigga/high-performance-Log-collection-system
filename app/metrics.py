@@ -67,29 +67,69 @@ redis_operation_duration_seconds = Histogram(
 )
 
 # ==================== 資料庫指標 ====================
-db_connections_active = Gauge(
-    'db_connections_active',
-    'Active database connections',
-    ['pool']  # master, replica
+# 原有的資料庫指標 (保留以便向後兼容)
+# db_connections_active = Gauge(
+#     'db_connections_active',
+#     'Active database connections',
+#     ['pool']  # master, replica
+# )
+#
+# db_connections_idle = Gauge(
+#     'db_connections_idle',
+#     'Idle database connections',
+#     ['pool']
+# )
+#
+# db_query_duration_seconds = Histogram(
+#     'db_query_duration_seconds',
+#     'Database query duration',
+#     ['query_type', 'pool'],  # select, insert, update, delete
+#     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
+# )
+#
+# db_queries_total = Counter(
+#     'db_queries_total',
+#     'Total database queries',
+#     ['query_type', 'status']  # success, error
+# )
+
+# PostgreSQL 專用指標 (與 Grafana 儀表板匹配)
+postgres_connections_active = Gauge(
+    'postgres_connections_active',
+    'Active PostgreSQL connections'
 )
 
-db_connections_idle = Gauge(
-    'db_connections_idle',
-    'Idle database connections',
-    ['pool']
+postgres_connections_idle = Gauge(
+    'postgres_connections_idle',
+    'Idle PostgreSQL connections'
 )
 
-db_query_duration_seconds = Histogram(
-    'db_query_duration_seconds',
-    'Database query duration',
-    ['query_type', 'pool'],  # select, insert, update, delete
+postgres_connections_total = Gauge(
+    'postgres_connections_total',
+    'Total PostgreSQL connections'
+)
+
+postgres_query_duration_seconds = Histogram(
+    'postgres_query_duration_seconds',
+    'PostgreSQL query duration in seconds',
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
 )
 
-db_queries_total = Counter(
-    'db_queries_total',
-    'Total database queries',
-    ['query_type', 'status']  # success, error
+postgres_queries_total = Counter(
+    'postgres_queries_total',
+    'Total PostgreSQL queries',
+    ['query_type']  # SELECT, INSERT, UPDATE, DELETE
+)
+
+postgres_database_size_bytes = Gauge(
+    'postgres_database_size_bytes',
+    'PostgreSQL database size in bytes'
+)
+
+postgres_errors_total = Counter(
+    'postgres_errors_total',
+    'Total PostgreSQL errors',
+    ['error_type']  # connection_error, query_error, timeout, etc.
 )
 
 # ==================== 業務指標 ====================

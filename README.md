@@ -342,6 +342,7 @@ end note
 | **Horizontal Scaling** | Multiple FastAPI/Worker instances | Linear throughput scaling |
 | **Fault Tolerance** | Health checks, auto-restart, retry mechanisms | High availability |
 | **Back-pressure Control** | Rate limiting (10000 req/s), Stream maxlen | Prevents system overload |
+| **Observability** | Prometheus + Grafana monitoring | Real-time performance insights |
 
 ### Core Features
 
@@ -351,6 +352,8 @@ end note
 - ✅ **Batch Optimization**: Batch writing to the database improves performance
 - ✅ **Smart Caching**: Redis cache queries reduce database pressure
 - ✅ **Fault Tolerance**: Automatic retries, health checks
+- ✅ **Comprehensive Monitoring**: Prometheus metrics with Grafana dashboards
+- ✅ **Automated Alerting**: AlertManager with customizable alert rules
 
 ---
 
@@ -359,19 +362,30 @@ end note
 ```
 log-collection-system/
 ├── app/                          # Application core
-│   ├── main.py                   # FastAPI main application (API endpoints)
-│   ├── worker.py                 # Background Worker (consumes Redis Stream)
-│   ├── database.py               # Database connection configuration
-│   ├── models.py                 # ORM models and Pydantic Schema
+│   ├── main.py                   # FastAPI main application (539 lines)
+│   ├── worker.py                 # Background Worker (327 lines)
+│   ├── database.py               # Database connection configuration (137 lines)
+│   ├── models.py                 # ORM models and Pydantic Schema (213 lines)
+│   ├── metrics.py                # Prometheus metrics collection (351 lines)
 │   ├── Dockerfile                # Application container image
 │   └── requirements.txt          # Python dependencies
 ├── nginx/
 │   └── nginx.conf                # Nginx load balancing configuration
 ├── postgres/
 │   └── init.sql                  # Database initialization script
+├── monitoring/                   # Monitoring stack
+│   ├── prometheus/
+│   │   ├── prometheus.yml        # Prometheus configuration
+│   │   └── alerts/
+│   │       └── app_alerts.yml    # Alert rules
+│   └── grafana/
+│       ├── provisioning/         # Grafana provisioning configs
+│       └── dashboards/
+│           └── log-collection-dashboard.json  # Main dashboard (863 lines)
 ├── tests/
-│   └── stress_test.py            # Stress test script
-├── docker-compose.yml            # Docker Compose configuration
+│   └── stress_test.py            # Stress test script (462 lines)
+├── docker-compose.yml            # Main services configuration
+├── docker-compose.monitoring.yml # Monitoring stack configuration
 └── README.md                     # This document
 ```
 
@@ -410,6 +424,7 @@ Client → Nginx → FastAPI → Redis Cache (Hit) → Response
 | **Background Worker** | `app/worker.py` | Consumes from Redis Stream in batches, writes to PostgreSQL |
 | **Database Layer** | `app/database.py` | Synchronous/asynchronous database connection pool management |
 | **Data Models** | `app/models.py` | SQLAlchemy ORM and Pydantic Schema |
+| **Metrics Collection** | `app/metrics.py` | Prometheus metrics, middleware for request tracking |
 
 ---
 
@@ -417,11 +432,13 @@ Client → Nginx → FastAPI → Redis Cache (Hit) → Response
 
 | Method | Endpoint | Function | File Location |
 |---|---|---|---|
-| GET | `/health` | Health check | `main.py:106` |
-| POST | `/api/log` | Single log entry | `main.py:147` |
-| POST | `/api/logs/batch` | Batch log entries | `main.py:190` |
-| GET | `/api/logs/{device_id}` | Query device logs | `main.py:242` |
-| GET | `/api/stats` | System statistics | `main.py:323` |
+| GET | `/` | Service information | `main.py:493-510` |
+| GET | `/health` | Health check (Redis + PostgreSQL) | `main.py:145-181` |
+| POST | `/api/log` | Single log entry | `main.py:186-242` |
+| POST | `/api/logs/batch` | Batch log entries (1-1000 logs) | `main.py:247-312` |
+| GET | `/api/logs/{device_id}` | Query device logs (with caching) | `main.py:317-403` |
+| GET | `/api/stats` | System statistics (cached 60s) | `main.py:408-479` |
+| GET | `/metrics` | Prometheus metrics endpoint | `main.py:484-490` |
 | GET | `/docs` | Swagger UI documentation | Auto-generated |
 | GET | `/redoc` | ReDoc documentation | Auto-generated |
 
@@ -602,7 +619,151 @@ Example test report:
   ✅ No failed requests
 ```
 
-## 📊 Monitoring and Management
+## 📊 Monitoring System
+
+### Start Monitoring Stack
+
+```bash
+# Start the main application first
+docker-compose up -d
+
+# Start the monitoring stack
+docker-compose -f docker-compose.monitoring.yml up -d
+
+# Check all services
+docker-compose ps
+docker-compose -f docker-compose.monitoring.yml ps
+```
+
+### Monitoring Services
+
+| Service | Port | URL | Credentials |
+|---|---|---|---|
+| **Grafana** | 3000 | http://localhost:3000 | admin / admin123 |
+| **Prometheus** | 9090 | http://localhost:9090 | - |
+| **AlertManager** | 9093 | http://localhost:9093 | - |
+| **Redis Exporter** | 9121 | http://localhost:9121/metrics | - |
+| **PostgreSQL Exporter** | 9187 | http://localhost:9187/metrics | - |
+| **Node Exporter** | 9100 | http://localhost:9100/metrics | - |
+| **cAdvisor** | 18888 | http://localhost:18888 | - |
+
+### Grafana Dashboard
+
+Access the pre-configured dashboard at: http://localhost:3000/d/log-collection-system
+
+**Dashboard Panels (15 total)**:
+1. **QPS** - Queries Per Second (Total, Success, Errors)
+2. **HTTP Request Latency** - P50, P95, P99 percentiles
+3. **Redis Stream Size** - Current message backlog
+4. **Redis Cache Hit Rate** - Cache effectiveness
+5. **Redis Operation Latency** - By operation type (XADD, GET, SET, XREADGROUP)
+6. **System CPU Usage** - Real-time CPU utilization
+7. **System Memory Usage** - Memory consumption
+8. **Logs Received Per Second** - By log level
+9. **Redis Stream Write Status** - Success vs Failed
+10. **System Disk Usage** - Disk space monitoring
+11. **PostgreSQL Connection Count** - Active, Idle, Total connections
+12. **PostgreSQL Query Statistics** - Commits, Rollbacks, Rows fetched
+13. **PostgreSQL Cache Hit Rate** - Database cache efficiency
+14. **PostgreSQL Database Size** - Storage usage
+15. **PostgreSQL Deadlocks & Conflicts** - Database health
+
+**Auto-refresh**: 10 seconds
+
+### Prometheus Metrics
+
+The system exposes comprehensive metrics at `/metrics` endpoint:
+
+#### HTTP Request Metrics
+- `http_requests_total` - Total HTTP requests (Counter)
+- `http_request_duration_seconds` - Request duration histogram
+  - Buckets: 0.001s to 10s (13 buckets)
+  - Percentiles: P50, P95, P99
+- `http_request_size_bytes` - Request payload size
+- `http_response_size_bytes` - Response payload size
+
+#### Redis Metrics
+- `redis_stream_messages_total` - Stream write counter (success/failed)
+- `redis_stream_size` - Current stream length (Gauge)
+- `redis_cache_hits_total` - Cache hit counter
+- `redis_cache_misses_total` - Cache miss counter
+- `redis_operation_duration_seconds` - Operation latency histogram
+  - Operations: xadd, get, set, xreadgroup
+  - Buckets: 0.0001s to 0.1s (9 buckets)
+
+#### Business Metrics
+- `logs_received_total` - Total logs received by device_id and log_level
+- `logs_processing_errors_total` - Processing errors by error_type
+- `batch_processing_duration_seconds` - Batch processing time
+- `active_devices_total` - Number of active devices
+
+#### System Metrics (via psutil)
+- `system_cpu_usage_percent` - CPU utilization
+- `system_memory_usage_bytes` - Memory usage (used/available/total)
+- `system_disk_usage_bytes` - Disk usage (used/free/total)
+
+#### Worker Metrics
+- `worker_active_tasks` - Active worker tasks
+- `worker_processed_logs_total` - Processed logs by worker_id and status
+- `worker_batch_size` - Histogram of batch sizes
+
+#### PostgreSQL Metrics (via postgres-exporter)
+- `postgres_connections_active` - Active connections
+- `postgres_connections_idle` - Idle connections
+- `postgres_connections_total` - Total connections
+- `postgres_query_duration_seconds` - Query execution time
+- `postgres_queries_total` - Total queries by type
+- `postgres_database_size_bytes` - Database size
+- `postgres_errors_total` - Database errors
+
+### Alert Rules
+
+The system includes pre-configured alerts (`monitoring/prometheus/alerts/app_alerts.yml`):
+
+| Alert Name | Condition | Duration | Severity |
+|---|---|---|---|
+| **HighAPILatency** | P95 > 500ms | 5 minutes | warning |
+| **HighErrorRate** | 5xx errors > 5% | 5 minutes | critical |
+| **RedisStreamBacklog** | Stream size > 50,000 | 10 minutes | warning |
+| **HighCPUUsage** | CPU > 80% | 10 minutes | warning |
+| **HighMemoryUsage** | Memory > 85% | 10 minutes | warning |
+| **ServiceDown** | Service unavailable | 1 minute | critical |
+| **LowCacheHitRate** | Cache hit rate < 50% | 15 minutes | warning |
+
+### Scrape Configuration
+
+Prometheus scrape intervals:
+- **Global default**: 15 seconds
+- **FastAPI instances**: 5 seconds (high-frequency metrics)
+- **Database exporters**: 10 seconds
+- **System metrics**: 10 seconds
+
+**Data retention**: 30 days
+
+### Query Examples
+
+View metrics in Prometheus (http://localhost:9090):
+
+```promql
+# Average request latency (P95)
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+
+# QPS by endpoint
+sum(rate(http_requests_total[1m])) by (endpoint)
+
+# Redis cache hit rate
+rate(redis_cache_hits_total[5m]) / (rate(redis_cache_hits_total[5m]) + rate(redis_cache_misses_total[5m]))
+
+# Active PostgreSQL connections
+postgres_connections_active
+
+# System memory usage percentage
+(system_memory_usage_bytes{type="used"} / system_memory_usage_bytes{type="total"}) * 100
+```
+
+---
+
+## 📊 Management and Operations
 
 ### View Logs
 
@@ -836,7 +997,99 @@ After the system starts, you can access the auto-generated API documentation:
 
 ---
 
-## ⚙️ Key Configuration Parameters
+## 🗄️ Database Schema
+
+### Main Table: logs
+
+```sql
+CREATE TABLE logs (
+    id BIGSERIAL PRIMARY KEY,
+    device_id VARCHAR(50) NOT NULL,
+    log_level VARCHAR(20) NOT NULL,
+    message TEXT,
+    log_data JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    indexed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+### Indexes
+
+- `idx_device_created` - Composite index on (device_id, created_at DESC)
+  - Optimizes queries filtering by device with time-based sorting
+- `idx_log_level` - Index on log_level
+  - Speeds up filtering by log severity
+- `idx_created_at` - Index on created_at DESC
+  - Optimizes time-based queries and analytics
+- `idx_log_data_gin` - GIN index on log_data JSONB field
+  - Enables efficient querying of JSON properties
+
+### Additional Tables
+
+- `devices` - Device metadata and status tracking
+- `log_statistics` - Daily aggregated statistics by device and level
+
+### Views
+
+- `daily_log_summary` - Aggregated daily logs by device and level
+  - Pre-computed view for faster analytics queries
+
+### Functions
+
+- `update_indexed_at()` - Trigger function to update indexed_at on UPDATE
+- `cleanup_old_logs(days_to_keep INTEGER)` - Maintenance function to delete old logs
+  - Usage: `SELECT cleanup_old_logs(30);` to keep only last 30 days
+
+### Sample Queries
+
+```sql
+-- Get logs for specific device
+SELECT * FROM logs
+WHERE device_id = 'device_001'
+ORDER BY created_at DESC
+LIMIT 100;
+
+-- Count logs by level
+SELECT log_level, COUNT(*)
+FROM logs
+GROUP BY log_level;
+
+-- Query JSON data
+SELECT * FROM logs
+WHERE log_data @> '{"error": true}';
+
+-- Get daily summary
+SELECT * FROM daily_log_summary
+WHERE summary_date >= NOW() - INTERVAL '7 days';
+```
+
+---
+
+## ⚙️ Configuration Parameters
+
+### Environment Variables
+
+#### PostgreSQL Configuration
+```bash
+POSTGRES_HOST=localhost       # Database host
+POSTGRES_PORT=5432           # Database port
+POSTGRES_USER=loguser        # Database user
+POSTGRES_PASSWORD=logpass    # Database password
+POSTGRES_DB=logsdb          # Database name
+```
+
+#### Redis Configuration
+```bash
+REDIS_HOST=localhost         # Redis host
+REDIS_PORT=6379             # Redis port
+```
+
+#### Application Configuration
+```bash
+INSTANCE_NAME=fastapi-1     # FastAPI instance identifier
+WORKER_NAME=worker-1        # Worker instance identifier
+TZ=Asia/Taipei             # Timezone
+```
 
 ### FastAPI Worker Count
 `docker-compose.yml`:
@@ -844,45 +1097,228 @@ After the system starts, you can access the auto-generated API documentation:
 fastapi-1:
   command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 6
 fastapi-2:
-  command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+  command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 6
 ```
+**Total**: 2 instances × 6 workers = 12 worker processes
 
 ### Worker Batch Processing
 `app/worker.py:23-24`:
 ```python
 BATCH_SIZE = 100  # Number of records processed per batch
-BLOCK_MS = 5000   # Block waiting milliseconds
+BLOCK_MS = 5000   # Block waiting milliseconds (5 seconds)
 ```
 
-### Redis Connection Pool
+### Redis Configuration
+
+#### Connection Pool (FastAPI)
 `app/main.py:58`:
 ```python
 max_connections=200  # Redis connection pool size
 ```
 
-### PostgreSQL Connection Pool
-`app/database.py:40-41`:
+#### Connection Pool (Worker)
+`app/worker.py`:
 ```python
-pool_size=10      # Persistent connections
-max_overflow=5    # Additional connections
+max_connections=10   # Worker Redis connection pool
 ```
 
-### Nginx Rate Limiting
+#### Stream Settings
+```python
+STREAM_NAME = "logs:stream"
+CONSUMER_GROUP = "log_workers"
+STREAM_MAXLEN = 100000  # Approximate max stream length
+```
+
+#### Cache Settings
+```python
+CACHE_TTL_LOGS = 300    # 5 minutes for log queries
+CACHE_TTL_STATS = 60    # 60 seconds for statistics
+```
+
+### PostgreSQL Connection Pool
+
+#### Asynchronous Pool (FastAPI)
+`app/database.py:40-45`:
+```python
+pool_size=10          # Persistent connections
+max_overflow=5        # Additional connections (total: 15)
+pool_timeout=30       # Connection timeout (seconds)
+pool_recycle=3600     # Recycle connections after 1 hour
+pool_pre_ping=True    # Verify connection before use
+```
+
+#### Synchronous Pool (Worker)
+`app/database.py:25-30`:
+```python
+pool_size=10          # Persistent connections
+max_overflow=5        # Additional connections (total: 15)
+pool_timeout=30       # Connection timeout (seconds)
+pool_recycle=3600     # Recycle connections after 1 hour
+pool_pre_ping=True    # Verify connection before use
+```
+
+### Nginx Configuration
+
+#### Rate Limiting
 `nginx/nginx.conf:37`:
 ```nginx
 limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10000r/s;
+limit_req zone=api_limit burst=20000 nodelay;
+```
+
+#### Connection Limits
+```nginx
+worker_connections 4096;      # Max connections per worker
+keepalive 128;               # Upstream keepalive connections
+limit_conn_zone $binary_remote_addr zone=conn_limit:10m;
+limit_conn conn_limit 1000;  # Max 1000 connections per IP
+```
+
+#### Timeouts
+```nginx
+client_body_timeout 12s;      # Client body timeout
+proxy_connect_timeout 5s;     # Backend connection timeout
+proxy_send_timeout 10s;       # Backend send timeout
+proxy_read_timeout 30s;       # Backend read timeout
+```
+
+#### Client Limits
+```nginx
+client_max_body_size 10m;     # Standard endpoints
+client_max_body_size 50m;     # Batch endpoint
+```
+
+### PostgreSQL Server Configuration
+`docker-compose.yml`:
+```bash
+max_connections=200           # Maximum concurrent connections
+shared_buffers=256MB         # Shared memory buffer
+effective_cache_size=768MB   # Expected OS cache
+work_mem=8MB                # Memory per operation
+synchronous_commit=off       # Async commit for performance
+```
+
+### Redis Server Configuration
+`docker-compose.yml`:
+```bash
+maxmemory 512mb              # Maximum memory usage
+maxmemory-policy allkeys-lru # Eviction policy
+appendonly yes               # AOF persistence
 ```
 
 ---
 
-## 🎯 Next Steps
+## 🎯 Technology Stack
 
-1. **Monitoring System**: Integrate Prometheus + Grafana
-2. **Log Analysis**: Integrate ELK Stack
-3. **High Availability**: Redis Cluster + PostgreSQL Primary/Standby
-4. **Scalability**: Kubernetes Deployment
+### Core Technologies
+- **Python 3.11** - Programming language
+- **FastAPI 0.109.0** - Web framework
+- **Uvicorn 0.27.0** - ASGI server
+- **SQLAlchemy 2.0.25** - ORM
+- **AsyncPG 0.29.0** - Async PostgreSQL driver
+- **Redis 5.0.1** - Python Redis client
+- **Pydantic 2.5.3** - Data validation
 
-View advanced version: `docker-compose.advanced.yml`
+### Monitoring & Metrics
+- **Prometheus** - Metrics collection and storage
+- **Grafana** - Metrics visualization
+- **AlertManager** - Alert routing and management
+- **prometheus-client 0.19.0** - Python Prometheus library
+- **psutil 5.9.7** - System metrics collection
+
+### Infrastructure
+- **Docker & Docker Compose** - Containerization
+- **Nginx** - Reverse proxy and load balancer
+- **Redis 7** - In-memory cache and stream
+- **PostgreSQL 15** - Relational database
+
+### Testing
+- **aiohttp 3.9.1** - Async HTTP client for load testing
+
+---
+
+## 🚀 Performance Characteristics
+
+### Measured Performance
+
+**Test Configuration** (`tests/stress_test.py`):
+- Devices: 100
+- Logs per device: 100
+- Total logs: 10,000
+- Concurrent limit: 200
+- Batch size: 5 logs per request
+- Test iterations: 50 (configurable)
+- Iteration interval: 20 seconds
+
+**Performance Targets**:
+- ✅ Throughput: ≥ 10,000 logs/second
+- ✅ P95 latency: ≤ 100ms
+- ✅ P99 latency: < 500ms
+- ✅ Error rate: 0%
+
+**Optimization History**:
+1. Initial: Single log API, CONCURRENT_LIMIT=50
+2. Phase 1: Increased workers from 2 to 6 per instance
+3. Phase 2: Added batch API endpoint with Redis Pipeline
+4. Phase 3: Increased Redis connection pool to 200
+5. Phase 4: Optimized batch size (100 → 5) for lower P95
+6. Phase 5: Increased Nginx rate limits and keepalive
+
+**Current Architecture**:
+- 2 FastAPI instances × 6 workers = 12 total workers
+- Nginx load balancing with least_conn algorithm
+- Redis Stream buffering with 100k message limit
+- Batch database inserts (100 rows per transaction)
+
+### Cache Performance
+- Cache TTL: 5 minutes (logs), 60 seconds (stats)
+- Expected cache hit rate: > 50%
+- Cache key pattern: `cache:logs:{device_id}:{limit}`
+
+---
+
+## 🎯 Completed Features & Next Steps
+
+### ✅ Completed
+1. ✅ **High-Performance API** - FastAPI with async/await
+2. ✅ **Load Balancing** - Nginx with least_conn algorithm
+3. ✅ **Message Queue** - Redis Streams for async processing
+4. ✅ **Batch Processing** - Worker batch inserts (100 logs/batch)
+5. ✅ **Smart Caching** - Redis cache with TTL
+6. ✅ **Monitoring System** - Prometheus + Grafana with 15 dashboard panels
+7. ✅ **Automated Alerting** - 7 pre-configured alert rules
+8. ✅ **Comprehensive Metrics** - HTTP, Redis, PostgreSQL, System, Business metrics
+9. ✅ **Stress Testing** - Automated load testing with detailed reports
+10. ✅ **Database Optimization** - Indexes, connection pooling, batch inserts
+
+### 🔜 Future Enhancements
+
+**Phase 1: Analytics & Intelligence**
+1. **Log Analysis**: Integrate ELK Stack (Elasticsearch, Logstash, Kibana)
+2. **Anomaly Detection**: ML-based pattern recognition
+3. **Advanced Querying**: Full-text search and log aggregation
+
+**Phase 2: High Availability**
+1. **Redis Cluster**: Multi-node Redis setup
+2. **PostgreSQL Replication**: Primary-standby configuration
+3. **Data Backup**: Automated backup and restore procedures
+
+**Phase 3: Scalability**
+1. **Kubernetes Deployment**: Container orchestration
+2. **Auto-scaling**: Dynamic resource allocation
+3. **Multi-region**: Geographic distribution
+
+**Phase 4: Security & Compliance**
+1. **Authentication**: JWT-based API authentication
+2. **Authorization**: Role-based access control (RBAC)
+3. **Encryption**: TLS/SSL for data in transit
+4. **Audit Logging**: Compliance tracking
+
+**Phase 5: Developer Experience**
+1. **CLI Tool**: Command-line interface for log management
+2. **SDK**: Client libraries for multiple languages
+3. **Webhooks**: Real-time event notifications
+4. **API Versioning**: Backward compatibility support
 
 ## 📝 License
 

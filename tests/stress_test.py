@@ -23,6 +23,9 @@ CONCURRENT_LIMIT = 200              # 提高並發以配合更小的批次
 # BATCH_SIZE = 100                    # 原始批次大小（P95 ~316ms）
 BATCH_SIZE = 5                     # 減小批次大小以降低 P95 回應時間
 USE_BATCH_API = True                # 是否使用批量 API（新增）
+# 新增：循環測試配置
+NUM_ITERATIONS = 50                  # 測試執行的循環次數（預設 1 次）
+ITERATION_INTERVAL = 20              # 每次循環之間的間隔時間（秒，預設 0 秒）
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 LOG_MESSAGES = [
@@ -226,18 +229,28 @@ async def batch_send_logs(
 async def stress_test(
     num_devices: int = NUM_DEVICES,
     logs_per_device: int = LOGS_PER_DEVICE,
-    concurrent_limit: int = CONCURRENT_LIMIT
+    concurrent_limit: int = CONCURRENT_LIMIT,
+    # 新增參數：循環次數（預設 1 次，保持向後相容）
+    iteration: int = 1,
+    # 新增參數：當前循環的編號（用於顯示）
+    current_iteration: int = 1
 ):
     """
     執行壓力測試
-    
+
     參數：
         num_devices: 設備數量
         logs_per_device: 每台設備發送的日誌數
         concurrent_limit: 並發限制
+        iteration: 總循環次數（新增）
+        current_iteration: 當前循環編號（新增）
     """
     print("=" * 70)
-    print("  📊 日誌收集系統 - 壓力測試")
+    # 修改：顯示當前循環資訊
+    if iteration > 1:
+        print(f"  📊 日誌收集系統 - 壓力測試 [第 {current_iteration}/{iteration} 輪]")
+    else:
+        print("  📊 日誌收集系統 - 壓力測試")
     print("=" * 70)
     print(f"測試配置：")
     print(f"  • 設備數量: {num_devices}")
@@ -245,6 +258,10 @@ async def stress_test(
     print(f"  • 總日誌數: {num_devices * logs_per_device:,}")
     print(f"  • 並發限制: {concurrent_limit}")
     print(f"  • API 端點: {BASE_URL}")
+    # 新增：顯示循環資訊
+    if iteration > 1:
+        print(f"  • 總循環次數: {iteration}")
+        print(f"  • 當前循環: {current_iteration}")
     print("-" * 70)
     
     # 建立信號量控制並發
@@ -406,20 +423,29 @@ async def main():
     """
     主程式入口
     """
-    # 執行壓力測試
-    await stress_test(
-        num_devices=NUM_DEVICES,
-        logs_per_device=LOGS_PER_DEVICE,
-        concurrent_limit=CONCURRENT_LIMIT
-    )
-    
+    # 修改：支援多輪循環測試
+    for i in range(NUM_ITERATIONS):
+        # 執行壓力測試（傳入循環資訊）
+        await stress_test(
+            num_devices=NUM_DEVICES,
+            logs_per_device=LOGS_PER_DEVICE,
+            concurrent_limit=CONCURRENT_LIMIT,
+            iteration=NUM_ITERATIONS,  # 新增：傳入總循環次數
+            current_iteration=i + 1     # 新增：傳入當前循環編號
+        )
+
+        # 新增：如果不是最後一輪，等待間隔時間
+        if i < NUM_ITERATIONS - 1 and ITERATION_INTERVAL > 0:
+            print(f"\n⏸️  等待 {ITERATION_INTERVAL} 秒後開始下一輪測試...")
+            await asyncio.sleep(ITERATION_INTERVAL)
+
     # 等待 Worker 處理完成
     print("\n⏳ 等待 5 秒讓 Worker 處理日誌...")
     await asyncio.sleep(5)
-    
+
     # 執行查詢測試
     await query_test("device_000")
-    
+
     # 查詢統計資料
     print(f"\n📊 查詢系統統計...")
     async with aiohttp.ClientSession() as session:
