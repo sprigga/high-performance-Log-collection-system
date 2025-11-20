@@ -1,0 +1,186 @@
+# 對照組 - 簡化版 Docker Compose
+# 無 Nginx、Redis、Worker，只有單一 FastAPI 實例
+
+services:
+  # ==========================================
+  # 簡化版應用層 - 單一 FastAPI 實例
+  # ==========================================
+  fastapi-simple:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: log-fastapi-simple
+    ports:
+      - "18724:8000"  # 使用不同端口避免衝突
+    environment:
+      - TZ=Asia/Taipei
+      - POSTGRES_HOST=postgres-simple
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=loguser
+      - POSTGRES_PASSWORD=logpass
+      - POSTGRES_DB=logsdb
+    depends_on:
+      postgres-simple:
+        condition: service_healthy
+    networks:
+      - simple-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 資料庫層 - PostgreSQL（使用相同配置以便公平比較）
+  # ==========================================
+  postgres-simple:
+    image: postgres:15-alpine
+    container_name: log-postgres-simple
+    ports:
+      - "15468:5432"  # 使用不同端口避免衝突
+    environment:
+      - TZ=Asia/Taipei
+      - POSTGRES_USER=loguser
+      - POSTGRES_PASSWORD=logpass
+      - POSTGRES_DB=logsdb
+    volumes:
+      - postgres-simple-data:/var/lib/postgresql/data
+      - ../postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=768MB"
+      - "-c"
+      - "synchronous_commit=off"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "timezone=Asia/Taipei"
+    networks:
+      - simple-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loguser -d logsdb"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ==========================================
+  # 監控層 - Prometheus
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: control-prometheus
+    ports:
+      - "19090:9090"  # 使用不同端口避免衝突
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-simple-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - simple-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 監控層 - Grafana
+  # ==========================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: control-grafana
+    ports:
+      - "13000:3000"  # 使用不同端口避免衝突
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # 設定獨特的根URL以避免與其他Grafana實例的會話衝突
+      - GF_SERVER_ROOT_URL=http://localhost:13000
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      # 設定不同的Cookie名稱以避免會話衝突
+      - GF_SESSION_OPTIONS_NAME=control-grafana-session
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SECURITY_COOKIE_SAMESITE=lax
+      # 新增: 設定 cookie secure 為 false (因為使用 http)
+      - GF_SECURITY_COOKIE_SECURE=false
+      # 新增: 設定獨特的 login cookie 名稱
+      - GF_AUTH_LOGIN_COOKIE_NAME=control-grafana-login
+      # 新增: 設定獨特的 oauth state cookie 名稱
+      - GF_AUTH_OAUTH_STATE_COOKIE_NAME=control-grafana-oauth
+    volumes:
+      - grafana-simple-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - simple-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 監控層 - PostgreSQL Exporter
+  # ==========================================
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: control-postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://loguser:logpass@postgres-simple:5432/logsdb?sslmode=disable
+    ports:
+      - "19187:9187"
+    depends_on:
+      - postgres-simple
+    networks:
+      - simple-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 監控層 - Node Exporter (系統資源)
+  # ==========================================
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: control-node-exporter
+    ports:
+      - "19100:9100"
+    networks:
+      - simple-network
+    restart: unless-stopped
+
+  # ==========================================
+  # 監控層 - cAdvisor (容器監控)
+  # ==========================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: control-cadvisor
+    ports:
+      - "18080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    networks:
+      - simple-network
+    restart: unless-stopped
+
+# ==========================================
+# 網路配置
+# ==========================================
+networks:
+  simple-network:
+    driver: bridge
+
+# ==========================================
+# 資料持久化
+# ==========================================
+volumes:
+  postgres-simple-data:
+    driver: local
+  prometheus-simple-data:
+    driver: local
+  grafana-simple-data:
+    driver: local

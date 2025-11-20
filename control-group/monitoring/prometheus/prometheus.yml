@@ -1,0 +1,36 @@
+# prometheus.yml - 對照組監控配置
+global:
+  scrape_interval: 15s      # 每 15 秒抓取一次指標
+  evaluation_interval: 15s   # 每 15 秒評估一次告警規則
+
+  external_labels:
+    cluster: 'control-group-simple'
+    environment: 'production'
+
+# 抓取配置
+scrape_configs:
+  # 簡化版 FastAPI 應用程式監控
+  - job_name: 'fastapi-simple'
+    static_configs:
+      - targets:
+        - 'fastapi-simple:8000'
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Node Exporter (系統資源監控)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 10s
+
+  # PostgreSQL 監控
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 10s
+
+  # cAdvisor (容器監控)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 10s

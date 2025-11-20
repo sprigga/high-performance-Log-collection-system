@@ -40,6 +40,19 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false
+      # 設定獨特的根URL以避免與其他Grafana實例的會話衝突
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      # 設定不同的Cookie名稱以避免會話衝突
+      - GF_SESSION_OPTIONS_NAME=log-grafana-session
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SECURITY_COOKIE_SAMESITE=lax
+      # 新增: 設定 cookie secure 為 false (因為使用 http)
+      - GF_SECURITY_COOKIE_SECURE=false
+      # 新增: 設定獨特的 login cookie 名稱
+      - GF_AUTH_LOGIN_COOKIE_NAME=log-grafana-login
+      # 新增: 設定獨特的 oauth state cookie 名稱
+      - GF_AUTH_OAUTH_STATE_COOKIE_NAME=log-grafana-oauth
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

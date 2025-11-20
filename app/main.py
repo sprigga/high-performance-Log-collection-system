@@ -7,6 +7,7 @@ import time
 import asyncio
 from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -132,9 +133,9 @@ async def shutdown_event():
     應用程式關閉時執行
     """
     global redis_client
-    
+
     print(f"🛑 關閉 FastAPI 實例: {INSTANCE_NAME}")
-    
+
     if redis_client:
         await redis_client.close()
         print("✅ Redis 連線已關閉")
@@ -146,7 +147,7 @@ async def shutdown_event():
 async def health_check():
     """
     健康檢查端點
-    
+
     檢查項目：
     - Redis 連線狀態
     - PostgreSQL 連線狀態
@@ -155,14 +156,14 @@ async def health_check():
         "redis": False,
         "postgres": False
     }
-    
+
     # 檢查 Redis
     try:
         await redis_client.ping()
         checks["redis"] = True
     except Exception as e:
         print(f"Redis 健康檢查失敗: {e}")
-    
+
     # 檢查 PostgreSQL
     try:
         async with async_engine.connect() as conn:
@@ -170,9 +171,9 @@ async def health_check():
         checks["postgres"] = True
     except Exception as e:
         print(f"PostgreSQL 健康檢查失敗: {e}")
-    
+
     status = "healthy" if all(checks.values()) else "unhealthy"
-    
+
     return HealthCheckResponse(
         status=status,
         instance=INSTANCE_NAME,
@@ -208,7 +209,7 @@ async def create_log(log: LogEntryRequest):
             "log_level": log.log_level,
             "message": log.message,
             "log_data": json.dumps(log.log_data) if log.log_data else "{}",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now(ZoneInfo("Asia/Taipei")).isoformat()
         }
 
         # 追蹤 Redis 操作時間
@@ -261,7 +262,9 @@ async def create_batch_logs(batch: BatchLogEntryRequest):
 
     try:
         message_ids = []
-        current_time = datetime.now().isoformat()
+        # 修正: 使用 Asia/Taipei 時區
+        # current_time = datetime.now().isoformat()  # 原始寫法沒有指定時區
+        current_time = datetime.now(ZoneInfo("Asia/Taipei")).isoformat()
 
         # 使用 Redis Pipeline 批量操作（大幅減少網路往返）
         pipe = redis_client.pipeline()
@@ -322,18 +325,18 @@ async def get_logs(
 ):
     """
     查詢指定設備的日誌
-    
+
     流程：
     1. 先查詢 Redis 快取
     2. Cache Miss 時查詢 PostgreSQL
     3. 將結果寫入快取（TTL 5分鐘）
-    
+
     參數：
     - device_id: 設備ID
     - limit: 查詢筆數（預設100，最多1000）
     """
     cache_key = f"cache:logs:{device_id}:{limit}"
-    
+
     # 1. 檢查 Redis 快取
     try:
         start_time = time.time()
@@ -353,7 +356,7 @@ async def get_logs(
             redis_cache_misses_total.inc()
     except Exception as e:
         print(f"Redis 快取讀取失敗: {e}")
-    
+
     # 2. Cache Miss - 查詢資料庫
     try:
         # 查詢日誌
@@ -365,7 +368,7 @@ async def get_logs(
         )
         result = await db.execute(query)
         logs = result.scalars().all()
-        
+
         # 轉換為回應格式
         logs_data = [
             {
@@ -378,7 +381,7 @@ async def get_logs(
             }
             for log in logs
         ]
-        
+
         # 3. 寫入快取（TTL 5分鐘）
         try:
             start_time = time.time()
@@ -391,13 +394,13 @@ async def get_logs(
             redis_operation_duration_seconds.labels(operation='set').observe(duration)
         except Exception as e:
             print(f"Redis 快取寫入失敗: {e}")
-        
+
         return BatchLogQueryResponse(
             total=len(logs_data),
             source="database",
             data=[LogQueryResponse(**log) for log in logs_data]
         )
-        
+
     except Exception as e:
         print(f"資料庫查詢失敗: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to query logs: {str(e)}")
@@ -409,14 +412,14 @@ async def get_logs(
 async def get_stats(db: AsyncSession = Depends(get_async_db)):
     """
     取得系統統計資料
-    
+
     統計項目：
     - 總日誌數
     - 各等級日誌數量
     - 最近活躍的設備
     """
     cache_key = "cache:stats"
-    
+
     # 檢查快取
     try:
         cached_stats = await redis_client.get(cache_key)
@@ -424,13 +427,13 @@ async def get_stats(db: AsyncSession = Depends(get_async_db)):
             return StatsResponse(**json.loads(cached_stats))
     except Exception as e:
         print(f"統計快取讀取失敗: {e}")
-    
+
     try:
         # 總日誌數
         total_query = select(func.count(Log.id))
         total_result = await db.execute(total_query)
         total_logs = total_result.scalar()
-        
+
         # 按等級統計
         level_query = (
             select(Log.log_level, func.count(Log.id))
@@ -438,7 +441,7 @@ async def get_stats(db: AsyncSession = Depends(get_async_db)):
         )
         level_result = await db.execute(level_query)
         logs_by_level = {row[0]: row[1] for row in level_result}
-        
+
         # 最近活躍的設備
         # 原始寫法有誤：SELECT DISTINCT 需要 ORDER BY 欄位也在 SELECT 中
         # device_query = (
@@ -455,13 +458,13 @@ async def get_stats(db: AsyncSession = Depends(get_async_db)):
         )
         device_result = await db.execute(device_query)
         recent_devices = [row[0] for row in device_result]
-        
+
         stats = {
             "total_logs": total_logs or 0,
             "logs_by_level": logs_by_level,
             "recent_devices": recent_devices
         }
-        
+
         # 寫入快取（TTL 60秒）
         try:
             await redis_client.setex(
@@ -471,9 +474,9 @@ async def get_stats(db: AsyncSession = Depends(get_async_db)):
             )
         except Exception as e:
             print(f"統計快取寫入失敗: {e}")
-        
+
         return StatsResponse(**stats)
-        
+
     except Exception as e:
         print(f"統計查詢失敗: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")

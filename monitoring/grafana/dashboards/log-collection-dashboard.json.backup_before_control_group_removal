@@ -843,6 +843,160 @@
         "avg": true
       },
       "nullPointMode": "connected"
+    },
+    {
+      "id": 17,
+      "title": "PostgreSQL 查詢時間 (對照組)",
+      "type": "graph",
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(postgres_query_duration_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "P95 - {{operation}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "查詢時間 (秒)",
+          "show": true
+        },
+        {
+          "format": "short",
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true,
+        "mode": "time"
+      },
+      "lines": true,
+      "fill": 0,
+      "linewidth": 2,
+      "pointradius": 2,
+      "points": false,
+      "bars": false,
+      "stack": false,
+      "percentage": false,
+      "legend": {
+        "show": true,
+        "values": true,
+        "min": false,
+        "max": true,
+        "current": true,
+        "total": false,
+        "avg": true
+      },
+      "nullPointMode": "connected"
+    },
+    {
+      "id": 18,
+      "title": "批量處理時間 (對照組)",
+      "type": "graph",
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(batch_processing_duration_seconds_bucket[5m])) by (le, batch_size))",
+          "legendFormat": "P95 - batch_size={{batch_size}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "處理時間 (秒)",
+          "show": true
+        },
+        {
+          "format": "short",
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true,
+        "mode": "time"
+      },
+      "lines": true,
+      "fill": 0,
+      "linewidth": 2,
+      "pointradius": 2,
+      "points": false,
+      "bars": false,
+      "stack": false,
+      "percentage": false,
+      "legend": {
+        "show": true,
+        "values": true,
+        "min": false,
+        "max": true,
+        "current": true,
+        "total": false,
+        "avg": true
+      },
+      "nullPointMode": "connected"
+    },
+    {
+      "id": 19,
+      "title": "錯誤統計 (對照組)",
+      "type": "graph",
+      "gridPos": {
+        "x": 12,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(logs_processing_errors_total[1m])) by (error_type)",
+          "legendFormat": "{{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "錯誤/秒 (筆)",
+          "min": 0,
+          "show": true
+        },
+        {
+          "format": "short",
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true,
+        "mode": "time"
+      },
+      "lines": true,
+      "fill": 0,
+      "linewidth": 2,
+      "pointradius": 2,
+      "points": false,
+      "bars": false,
+      "stack": false,
+      "percentage": false,
+      "legend": {
+        "show": true,
+        "values": true,
+        "min": false,
+        "max": true,
+        "current": true,
+        "total": false,
+        "avg": true
+      },
+      "nullPointMode": "connected"
     }
   ],
   "editable": true,
@@ -853,7 +1007,8 @@
     "log-collection",
     "performance",
     "integrated",
-    "redis"
+    "redis",
+    "control-group"
   ],
   "templating": {
     "list": []

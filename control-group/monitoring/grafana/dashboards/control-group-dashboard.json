@@ -1,7 +1,7 @@
 {
   "id": null,
-  "uid": "log-collection-integrated",
-  "title": "日誌收集系統 - 整合效能儀表板 (Redis + 對照組)",
+  "uid": "control-group-simple",
+  "title": "對照組 - 簡化系統效能儀表板",
   "timezone": "Asia/Taipei",
   "refresh": "10s",
   "time": {
@@ -133,166 +133,11 @@
     },
     {
       "id": 3,
-      "title": "Redis Stream 大小",
-      "type": "graph",
-      "gridPos": {
-        "x": 0,
-        "y": 8,
-        "w": 8,
-        "h": 8
-      },
-      "targets": [
-        {
-          "expr": "redis_stream_size",
-          "legendFormat": "Stream 長度",
-          "refId": "A"
-        }
-      ],
-      "yaxes": [
-        {
-          "format": "short",
-          "label": "訊息數量 (筆)",
-          "show": true
-        },
-        {
-          "format": "short",
-          "show": false
-        }
-      ],
-      "xaxis": {
-        "show": true,
-        "mode": "time"
-      },
-      "lines": true,
-      "fill": 0,
-      "linewidth": 2,
-      "pointradius": 2,
-      "points": false,
-      "bars": false,
-      "stack": false,
-      "percentage": false,
-      "legend": {
-        "show": true,
-        "values": true,
-        "min": false,
-        "max": true,
-        "current": true,
-        "total": false,
-        "avg": true
-      },
-      "nullPointMode": "connected"
-    },
-    {
-      "id": 4,
-      "title": "Redis 快取命中率",
-      "type": "graph",
-      "gridPos": {
-        "x": 8,
-        "y": 8,
-        "w": 8,
-        "h": 8
-      },
-      "targets": [
-        {
-          "expr": "rate(redis_cache_hits_total[5m]) / (rate(redis_cache_hits_total[5m]) + rate(redis_cache_misses_total[5m])) * 100",
-          "legendFormat": "快取命中率",
-          "refId": "A"
-        }
-      ],
-      "yaxes": [
-        {
-          "format": "percent",
-          "label": "命中率 (%)",
-          "max": 100,
-          "min": 0,
-          "show": true
-        },
-        {
-          "format": "short",
-          "show": false
-        }
-      ],
-      "xaxis": {
-        "show": true,
-        "mode": "time"
-      },
-      "lines": true,
-      "fill": 0,
-      "linewidth": 2,
-      "pointradius": 2,
-      "points": false,
-      "bars": false,
-      "stack": false,
-      "percentage": false,
-      "legend": {
-        "show": true,
-        "values": true,
-        "min": false,
-        "max": true,
-        "current": true,
-        "total": false,
-        "avg": true
-      },
-      "nullPointMode": "connected"
-    },
-    {
-      "id": 5,
-      "title": "Redis 操作延遲",
-      "type": "graph",
-      "gridPos": {
-        "x": 16,
-        "y": 8,
-        "w": 8,
-        "h": 8
-      },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(redis_operation_duration_seconds_bucket[5m])) by (le, operation))",
-          "legendFormat": "P95 - {{operation}}",
-          "refId": "A"
-        }
-      ],
-      "yaxes": [
-        {
-          "format": "s",
-          "label": "操作時間 (秒)",
-          "show": true
-        },
-        {
-          "format": "short",
-          "show": false
-        }
-      ],
-      "xaxis": {
-        "show": true,
-        "mode": "time"
-      },
-      "lines": true,
-      "fill": 0,
-      "linewidth": 2,
-      "pointradius": 2,
-      "points": false,
-      "bars": false,
-      "stack": false,
-      "percentage": false,
-      "legend": {
-        "show": true,
-        "values": true,
-        "min": false,
-        "max": true,
-        "current": true,
-        "total": false,
-        "avg": true
-      },
-      "nullPointMode": "connected"
-    },
-    {
-      "id": 6,
       "title": "系統 CPU 使用率",
       "type": "graph",
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 8,
         "w": 8,
         "h": 8
       },
@@ -340,12 +185,12 @@
       "nullPointMode": "connected"
     },
     {
-      "id": 7,
+      "id": 4,
       "title": "系統記憶體使用",
       "type": "graph",
       "gridPos": {
         "x": 8,
-        "y": 16,
+        "y": 8,
         "w": 8,
         "h": 8
       },
@@ -396,12 +241,12 @@
       "nullPointMode": "connected"
     },
     {
-      "id": 8,
+      "id": 5,
       "title": "每秒日誌接收數",
       "type": "graph",
       "gridPos": {
         "x": 16,
-        "y": 16,
+        "y": 8,
         "w": 8,
         "h": 8
       },
@@ -447,68 +292,12 @@
       "nullPointMode": "connected"
     },
     {
-      "id": 9,
-      "title": "Redis Stream 寫入狀態",
-      "type": "graph",
-      "gridPos": {
-        "x": 0,
-        "y": 24,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "expr": "rate(redis_stream_messages_total{status='success'}[1m])",
-          "legendFormat": "成功",
-          "refId": "A"
-        },
-        {
-          "expr": "rate(redis_stream_messages_total{status='failed'}[1m])",
-          "legendFormat": "失敗",
-          "refId": "B"
-        }
-      ],
-      "yaxes": [
-        {
-          "format": "short",
-          "label": "訊息/秒 (筆)",
-          "show": true
-        },
-        {
-          "format": "short",
-          "show": false
-        }
-      ],
-      "xaxis": {
-        "show": true,
-        "mode": "time"
-      },
-      "lines": true,
-      "fill": 0,
-      "linewidth": 2,
-      "pointradius": 2,
-      "points": false,
-      "bars": false,
-      "stack": false,
-      "percentage": false,
-      "legend": {
-        "show": true,
-        "values": true,
-        "min": false,
-        "max": true,
-        "current": true,
-        "total": false,
-        "avg": true
-      },
-      "nullPointMode": "connected"
-    },
-    {
-      "id": 10,
+      "id": 6,
       "title": "系統磁碟使用",
       "type": "graph",
       "gridPos": {
-        "x": 12,
-        "y": 24,
+        "x": 0,
+        "y": 16,
         "w": 12,
         "h": 8
       },
@@ -559,7 +348,109 @@
       "nullPointMode": "connected"
     },
     {
-      "id": 11,
+      "id": 8,
+      "title": "PostgreSQL 查詢時間",
+      "type": "graph",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(postgres_query_duration_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "P95 - {{operation}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "查詢時間 (秒)",
+          "show": true
+        },
+        {
+          "format": "short",
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true,
+        "mode": "time"
+      },
+      "lines": true,
+      "fill": 0,
+      "linewidth": 2,
+      "pointradius": 2,
+      "points": false,
+      "bars": false,
+      "stack": false,
+      "percentage": false,
+      "legend": {
+        "show": true,
+        "values": true,
+        "min": false,
+        "max": true,
+        "current": true,
+        "total": false,
+        "avg": true
+      },
+      "nullPointMode": "connected"
+    },
+    {
+      "id": 9,
+      "title": "批量處理時間",
+      "type": "graph",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(batch_processing_duration_seconds_bucket[5m])) by (le, batch_size))",
+          "legendFormat": "P95 - batch_size={{batch_size}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "處理時間 (秒)",
+          "show": true
+        },
+        {
+          "format": "short",
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true,
+        "mode": "time"
+      },
+      "lines": true,
+      "fill": 0,
+      "linewidth": 2,
+      "pointradius": 2,
+      "points": false,
+      "bars": false,
+      "stack": false,
+      "percentage": false,
+      "legend": {
+        "show": true,
+        "values": true,
+        "min": false,
+        "max": true,
+        "current": true,
+        "total": false,
+        "avg": true
+      },
+      "nullPointMode": "connected"
+    },
+    {
+      "id": 10,
       "title": "PostgreSQL 連線數",
       "type": "graph",
       "gridPos": {
@@ -621,128 +512,13 @@
       "nullPointMode": "connected"
     },
     {
-      "id": 12,
-      "title": "PostgreSQL 查詢統計",
+      "id": 11,
+      "title": "PostgreSQL 資料庫大小",
       "type": "graph",
       "gridPos": {
         "x": 8,
         "y": 32,
         "w": 8,
-        "h": 8
-      },
-      "targets": [
-        {
-          "expr": "rate(pg_stat_database_xact_commit{datname=\"logsdb\"}[1m])",
-          "legendFormat": "提交事務/秒",
-          "refId": "A"
-        },
-        {
-          "expr": "rate(pg_stat_database_xact_rollback{datname=\"logsdb\"}[1m])",
-          "legendFormat": "回滾事務/秒",
-          "refId": "B"
-        },
-        {
-          "expr": "rate(pg_stat_database_tup_returned{datname=\"logsdb\"}[1m])",
-          "legendFormat": "查詢行數/秒",
-          "refId": "C"
-        }
-      ],
-      "yaxes": [
-        {
-          "format": "short",
-          "label": "操作/秒",
-          "min": 0,
-          "show": true
-        },
-        {
-          "format": "short",
-          "show": false
-        }
-      ],
-      "xaxis": {
-        "show": true,
-        "mode": "time"
-      },
-      "lines": true,
-      "fill": 0,
-      "linewidth": 2,
-      "pointradius": 2,
-      "points": false,
-      "bars": false,
-      "stack": false,
-      "percentage": false,
-      "legend": {
-        "show": true,
-        "values": true,
-        "min": true,
-        "max": true,
-        "current": true,
-        "total": false,
-        "avg": true
-      },
-      "nullPointMode": "connected"
-    },
-    {
-      "id": 13,
-      "title": "PostgreSQL 快取命中率",
-      "type": "graph",
-      "gridPos": {
-        "x": 16,
-        "y": 32,
-        "w": 8,
-        "h": 8
-      },
-      "targets": [
-        {
-          "expr": "rate(pg_stat_database_blks_hit{datname=\"logsdb\"}[5m]) / (rate(pg_stat_database_blks_hit{datname=\"logsdb\"}[5m]) + rate(pg_stat_database_blks_read{datname=\"logsdb\"}[5m])) * 100",
-          "legendFormat": "快取命中率",
-          "refId": "A"
-        }
-      ],
-      "yaxes": [
-        {
-          "format": "percent",
-          "label": "命中率 (%)",
-          "min": 0,
-          "max": 100,
-          "show": true
-        },
-        {
-          "format": "short",
-          "show": false
-        }
-      ],
-      "xaxis": {
-        "show": true,
-        "mode": "time"
-      },
-      "lines": true,
-      "fill": 0,
-      "linewidth": 2,
-      "pointradius": 2,
-      "points": false,
-      "bars": false,
-      "stack": false,
-      "percentage": false,
-      "legend": {
-        "show": true,
-        "values": true,
-        "min": false,
-        "max": true,
-        "current": true,
-        "total": false,
-        "avg": true
-      },
-      "nullPointMode": "connected"
-    },
-    {
-      "id": 14,
-      "title": "PostgreSQL 資料庫大小",
-      "type": "graph",
-      "gridPos": {
-        "x": 0,
-        "y": 40,
-        "w": 12,
         "h": 8
       },
       "targets": [
@@ -788,31 +564,26 @@
       "nullPointMode": "connected"
     },
     {
-      "id": 15,
-      "title": "PostgreSQL 死鎖與衝突",
+      "id": 12,
+      "title": "錯誤統計",
       "type": "graph",
       "gridPos": {
-        "x": 12,
-        "y": 40,
-        "w": 12,
+        "x": 16,
+        "y": 32,
+        "w": 8,
         "h": 8
       },
       "targets": [
         {
-          "expr": "rate(pg_stat_database_deadlocks{datname=\"logsdb\"}[1m])",
-          "legendFormat": "死鎖/秒",
+          "expr": "sum(rate(logs_processing_errors_total[1m])) by (error_type)",
+          "legendFormat": "{{error_type}}",
           "refId": "A"
-        },
-        {
-          "expr": "rate(pg_stat_database_conflicts{datname=\"logsdb\"}[1m])",
-          "legendFormat": "衝突/秒",
-          "refId": "B"
         }
       ],
       "yaxes": [
         {
           "format": "short",
-          "label": "事件/秒 (筆)",
+          "label": "錯誤/秒 (筆)",
           "min": 0,
           "show": true
         },
@@ -850,10 +621,9 @@
   "schemaVersion": 16,
   "style": "dark",
   "tags": [
-    "log-collection",
-    "performance",
-    "integrated",
-    "redis"
+    "control-group",
+    "simple",
+    "performance"
   ],
   "templating": {
     "list": []

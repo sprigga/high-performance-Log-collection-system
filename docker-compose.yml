@@ -30,7 +30,7 @@ services:
       dockerfile: Dockerfile
     container_name: log-fastapi-1
     # command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2  # 原始設定
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 6    # 提升 workers 數量
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4    # 提升 workers 數量
     environment:
       - TZ=Asia/Taipei
       - POSTGRES_HOST=postgres
@@ -54,7 +54,7 @@ services:
       dockerfile: Dockerfile
     container_name: log-fastapi-2
     # command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2  # 原始設定
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 6    # 提升 workers 數量
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4    # 提升 workers 數量
     environment:
       - TZ=Asia/Taipei
       - POSTGRES_HOST=postgres
@@ -154,6 +154,12 @@ services:
       - "synchronous_commit=off"
       - "-c"
       - "work_mem=8MB"
+      - "-c"
+      - "timezone=Asia/Taipei"
+      - "-c"
+      - "idle_session_timeout=28800000"      # 8小時 (以毫秒為單位)
+      - "-c"
+      - "idle_in_transaction_session_timeout=28800000"  # 8小時 (以毫秒為單位)
     networks:
       - log-network
     restart: unless-stopped

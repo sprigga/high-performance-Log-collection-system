@@ -215,22 +215,76 @@ route:
 
 ### 4. Exporters (指標導出器)
 
+Exporters 是 Prometheus 生態系統中的關鍵組件，負責從各種服務中擷取指標並轉換為 Prometheus 可以理解的格式。每個 Exporter 都使用不同的技術來收集指標。
+
+---
+
 #### 4.1 Redis Exporter
 
 **映像**: `oliver006/redis_exporter:latest`
 
 **端口**: 9121
 
-**環境變數**: `REDIS_ADDR=redis:6379`
+**配置位置**: `docker-compose.monitoring.yml:76`
 
-**提供指標**:
-- Redis 連線狀態
-- 鍵空間統計
-- 記憶體使用
-- 命令執行統計
-- Stream 相關指標
+##### 環境變數配置
 
-**配置位置**: `docker-compose.monitoring.yml:71`
+```yaml
+environment:
+  - REDIS_ADDR=redis:6379  # Redis 服務器地址
+```
+
+##### 資料擷取機制
+
+**連接方式**:
+- 使用 Redis 客戶端協議連接到 Redis 服務器
+- 通過 `REDIS_ADDR` 環境變數指定連接地址
+
+**擷取方法**:
+
+1. **INFO 命令**：定期執行 `INFO` 命令獲取伺服器統計資訊
+   ```redis
+   INFO server     # 伺服器資訊
+   INFO memory     # 記憶體使用
+   INFO stats      # 統計資訊
+   INFO replication # 複製資訊
+   ```
+
+2. **DBSIZE 命令**：獲取資料庫鍵總數
+   ```redis
+   DBSIZE
+   ```
+
+3. **Stream 資訊**：使用 `XINFO STREAM` 和 `XLEN` 獲取 Stream 詳細資訊
+   ```redis
+   XINFO STREAM logs_stream
+   XLEN logs_stream
+   ```
+
+4. **慢查詢日誌**：通過 `SLOWLOG GET` 獲取慢查詢資訊
+
+**擷取頻率**: 每 10 秒（由 Prometheus 配置 `scrape_interval: 10s`）
+
+**提供的核心指標**:
+- `redis_up`: Redis 連線狀態 (1=正常, 0=異常)
+- `redis_memory_used_bytes`: 已使用記憶體（位元組）
+- `redis_connected_clients`: 當前連線的客戶端數量
+- `redis_commands_processed_total`: 處理的命令總數
+- `redis_keyspace_hits_total` / `redis_keyspace_misses_total`: 鍵空間命中/未命中
+- `redis_stream_length`: Stream 當前長度
+- `redis_stream_groups`: Stream 消費者群組數量
+
+**技術原理**:
+- Redis Exporter 是用 Go 語言編寫
+- 使用 `go-redis` 客戶端庫
+- 將 Redis INFO 命令返回的鍵值對解析並轉換為 Prometheus 指標
+- 支援多個 Redis 實例監控和 Redis Sentinel
+
+**優勢**:
+- ✅ 無需修改 Redis 配置
+- ✅ 對 Redis 效能影響極小（只讀操作）
+- ✅ 支援 Redis Cluster 和 Sentinel
+- ✅ 可自定義要擷取的鍵模式
 
 ---
 
@@ -240,16 +294,90 @@ route:
 
 **端口**: 9187
 
-**連線字串**: `postgresql://loguser:logpass@postgres:5432/logsdb?sslmode=disable`
+**配置位置**: `docker-compose.monitoring.yml:93`
 
-**提供指標**:
-- 資料庫連線數
-- 查詢效能
-- 資料表大小
-- 索引使用情況
-- 交易統計
+##### 環境變數配置
 
-**配置位置**: `docker-compose.monitoring.yml:87`
+```yaml
+environment:
+  - DATA_SOURCE_NAME=postgresql://loguser:logpass@postgres:5432/logsdb?sslmode=disable
+```
+
+**連線字串格式**: `postgresql://[user]:[password]@[host]:[port]/[database]?sslmode=[mode]`
+
+##### 資料擷取機制
+
+**連接方式**:
+- 使用標準 PostgreSQL 客戶端協議連接資料庫
+- 通過 `DATA_SOURCE_NAME` 環境變數提供連線資訊
+- 需要有資料庫讀取權限的帳號
+
+**擷取方法**:
+
+1. **系統目錄查詢**：查詢 PostgreSQL 系統目錄獲取元數據
+   ```sql
+   -- 資料庫統計
+   SELECT * FROM pg_stat_database WHERE datname = 'logsdb';
+
+   -- 資料表統計
+   SELECT * FROM pg_stat_user_tables;
+
+   -- 索引統計
+   SELECT * FROM pg_stat_user_indexes;
+   ```
+
+2. **效能視圖**：查詢效能相關視圖
+   ```sql
+   -- 活動連線
+   SELECT * FROM pg_stat_activity;
+
+   -- 複製狀態
+   SELECT * FROM pg_stat_replication;
+
+   -- 背景寫入器統計
+   SELECT * FROM pg_stat_bgwriter;
+   ```
+
+3. **資料表大小**：計算資料表和索引大小
+   ```sql
+   SELECT
+     schemaname,
+     tablename,
+     pg_total_relation_size(schemaname||'.'||tablename) AS size
+   FROM pg_tables;
+   ```
+
+4. **自定義查詢**：支援通過配置檔案定義自定義 SQL 查詢
+
+**擷取頻率**: 每 10 秒（由 Prometheus 配置 `scrape_interval: 10s`）
+
+**提供的核心指標**:
+- `pg_up`: PostgreSQL 連線狀態 (1=正常, 0=異常)
+- `pg_stat_database_numbackends`: 活躍連線數
+- `pg_stat_database_xact_commit` / `pg_stat_database_xact_rollback`: 交易提交/回滾數
+- `pg_stat_database_blks_read` / `pg_stat_database_blks_hit`: 磁碟讀取/快取命中
+- `pg_stat_user_tables_n_tup_ins`: 插入的記錄數
+- `pg_stat_user_tables_n_tup_upd`: 更新的記錄數
+- `pg_stat_user_tables_n_tup_del`: 刪除的記錄數
+- `pg_database_size_bytes`: 資料庫大小（位元組）
+- `pg_stat_bgwriter_buffers_alloc`: 分配的緩衝區數量
+
+**技術原理**:
+- PostgreSQL Exporter 是用 Go 語言編寫
+- 使用 `lib/pq` PostgreSQL 驅動
+- 執行預定義的 SQL 查詢並將結果轉換為 Prometheus 指標
+- 支援自定義查詢配置（可通過 YAML 文件定義）
+
+**優勢**:
+- ✅ 豐富的內建查詢涵蓋大部分監控需求
+- ✅ 支援自定義 SQL 查詢
+- ✅ 對資料庫效能影響小（僅查詢統計視圖）
+- ✅ 支援多資料庫監控
+
+**注意事項**:
+- ⚠️ 需要確保監控帳號有足夠權限讀取系統視圖
+- ⚠️ 複雜的自定義查詢可能影響資料庫效能
+- ⚠️ 連線字串包含密碼，需注意安全性
 
 ---
 
@@ -259,19 +387,130 @@ route:
 
 **端口**: 9100
 
-**掛載點**:
-- `/proc:/host/proc:ro`
-- `/sys:/host/sys:ro`
-- `/:/rootfs:ro`
+**配置位置**: `docker-compose.monitoring.yml:110`
 
-**提供指標**:
-- CPU 使用率
-- 記憶體使用
-- 磁碟 I/O
-- 網路流量
-- 檔案系統狀態
+##### Volume 掛載配置
 
-**配置位置**: `docker-compose.monitoring.yml:103`
+```yaml
+volumes:
+  - /proc:/host/proc:ro       # 進程資訊
+  - /sys:/host/sys:ro         # 系統資訊
+  - /:/rootfs:ro              # 根檔案系統
+```
+
+##### Command 參數配置
+
+```yaml
+command:
+  - '--path.procfs=/host/proc'
+  - '--path.sysfs=/host/sys'
+  - '--path.rootfs=/rootfs'
+  - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+```
+
+##### 資料擷取機制
+
+**擷取方式**:
+- **不需要連接任何服務**，直接讀取 Linux 系統文件
+- 通過掛載宿主機的 `/proc`、`/sys`、`/` 目錄獲取系統資訊
+
+**擷取方法**:
+
+1. **CPU 資訊** (`/proc/stat`):
+   ```bash
+   # 讀取 CPU 使用時間統計
+   cat /host/proc/stat
+   # 輸出: cpu  user nice system idle iowait irq softirq...
+   ```
+
+2. **記憶體資訊** (`/proc/meminfo`):
+   ```bash
+   # 讀取記憶體使用情況
+   cat /host/proc/meminfo
+   # 輸出: MemTotal, MemFree, MemAvailable, Buffers, Cached...
+   ```
+
+3. **磁碟 I/O** (`/proc/diskstats`):
+   ```bash
+   # 讀取磁碟統計資訊
+   cat /host/proc/diskstats
+   # 輸出: major minor name reads writes sectors...
+   ```
+
+4. **網路統計** (`/proc/net/dev`):
+   ```bash
+   # 讀取網路介面統計
+   cat /host/proc/net/dev
+   # 輸出: interface receive_bytes transmit_bytes...
+   ```
+
+5. **檔案系統** (`/proc/mounts` + `statfs` 系統調用):
+   ```bash
+   # 讀取掛載點資訊
+   cat /host/proc/mounts
+   # 使用 statfs 系統調用獲取空間使用
+   ```
+
+6. **系統負載** (`/proc/loadavg`):
+   ```bash
+   # 讀取系統負載
+   cat /host/proc/loadavg
+   # 輸出: 1分鐘 5分鐘 15分鐘負載平均值
+   ```
+
+**擷取頻率**: 每 10 秒（由 Prometheus 配置 `scrape_interval: 10s`）
+
+**提供的核心指標**:
+
+**CPU 指標**:
+- `node_cpu_seconds_total`: CPU 各模式（user, system, idle, iowait）的累計時間
+
+**記憶體指標**:
+- `node_memory_MemTotal_bytes`: 總記憶體
+- `node_memory_MemFree_bytes`: 空閒記憶體
+- `node_memory_MemAvailable_bytes`: 可用記憶體
+- `node_memory_Buffers_bytes` / `node_memory_Cached_bytes`: 緩衝區/快取
+
+**磁碟指標**:
+- `node_disk_io_time_seconds_total`: 磁碟 I/O 時間
+- `node_disk_read_bytes_total` / `node_disk_written_bytes_total`: 讀取/寫入位元組數
+- `node_filesystem_size_bytes` / `node_filesystem_free_bytes`: 檔案系統大小/可用空間
+
+**網路指標**:
+- `node_network_receive_bytes_total`: 接收位元組數
+- `node_network_transmit_bytes_total`: 傳送位元組數
+- `node_network_receive_errs_total` / `node_network_transmit_errs_total`: 接收/傳送錯誤數
+
+**系統指標**:
+- `node_load1` / `node_load5` / `node_load15`: 1/5/15 分鐘負載平均值
+- `node_boot_time_seconds`: 系統啟動時間
+
+**技術原理**:
+- Node Exporter 是用 Go 語言編寫
+- 使用 Collectors 架構，每個 Collector 負責收集特定類型的指標
+- 直接讀取 Linux `/proc` 和 `/sys` 偽檔案系統
+- 使用 Go 標準庫的系統調用（如 `syscall.Statfs`）
+
+**Collectors 列表**:
+- `cpu`: CPU 統計
+- `meminfo`: 記憶體資訊
+- `diskstats`: 磁碟統計
+- `netdev`: 網路設備統計
+- `filesystem`: 檔案系統統計
+- `loadavg`: 系統負載
+- `time`: 系統時間
+- 還有 50+ 其他可選 collectors
+
+**優勢**:
+- ✅ 完全無侵入，不需要修改系統配置
+- ✅ 效能開銷極低（只讀取文件）
+- ✅ 提供豐富的系統級指標
+- ✅ 支援 Linux、macOS、Windows（不同平台有不同 collectors）
+
+**為什麼需要掛載目錄**:
+- Node Exporter 運行在容器中，但需要監控**宿主機**的資源
+- 通過掛載宿主機目錄，容器可以讀取宿主機的系統資訊
+- 唯讀掛載（`:ro`）確保安全性
 
 ---
 
@@ -279,18 +518,243 @@ route:
 
 **映像**: `gcr.io/cadvisor/cadvisor:latest`
 
-**端口**: 18888 (避免與其他服務衝突，原為 8080)
+**端口**: 18888 (對外) / 8080 (容器內)
 
-**特殊配置**: 需要 privileged 模式和 /dev/kmsg 裝置
+**配置位置**: `docker-compose.monitoring.yml:133`
 
-**提供指標**:
-- 容器 CPU 使用率
-- 容器記憶體使用
-- 容器網路流量
-- 容器檔案系統使用
-- 容器生命週期事件
+**端口說明**: 原本使用 8080:8080，改用 18888:8080 避免與其他服務衝突
 
-**配置位置**: `docker-compose.monitoring.yml:124`
+##### Volume 掛載配置
+
+```yaml
+volumes:
+  - /:/rootfs:ro                          # 根檔案系統
+  - /var/run:/var/run:ro                  # Docker socket
+  - /sys:/sys:ro                          # 系統資訊
+  - /var/lib/docker/:/var/lib/docker:ro   # Docker 資料目錄
+  - /dev/disk/:/dev/disk:ro               # 磁碟設備
+```
+
+##### 特殊配置
+
+```yaml
+privileged: true    # 需要特權模式訪問系統資源
+devices:
+  - /dev/kmsg       # 內核訊息設備
+```
+
+##### 資料擷取機制
+
+**連接方式**:
+- **直接與 Docker daemon 通信**（通過 `/var/run/docker.sock`）
+- 讀取 Linux cgroups (Control Groups) 資訊
+- 讀取容器檔案系統資訊
+
+**擷取方法**:
+
+1. **Docker API**：獲取容器列表和基本資訊
+   ```bash
+   # cAdvisor 通過 Docker socket 調用 API
+   # 類似執行: docker ps --format json
+   GET /containers/json
+   ```
+
+2. **cgroups 檔案系統** (`/sys/fs/cgroup`):
+
+   **CPU 使用**:
+   ```bash
+   # 讀取容器 CPU 使用統計
+   cat /sys/fs/cgroup/cpu/docker/<container_id>/cpuacct.usage
+   cat /sys/fs/cgroup/cpu/docker/<container_id>/cpu.stat
+   ```
+
+   **記憶體使用**:
+   ```bash
+   # 讀取容器記憶體使用
+   cat /sys/fs/cgroup/memory/docker/<container_id>/memory.usage_in_bytes
+   cat /sys/fs/cgroup/memory/docker/<container_id>/memory.stat
+   ```
+
+   **網路統計**:
+   ```bash
+   # 讀取容器網路統計（從容器的 network namespace）
+   cat /proc/<container_pid>/net/dev
+   ```
+
+   **磁碟 I/O**:
+   ```bash
+   # 讀取容器磁碟 I/O
+   cat /sys/fs/cgroup/blkio/docker/<container_id>/blkio.throttle.io_service_bytes
+   ```
+
+3. **容器檔案系統**：
+   ```bash
+   # 計算容器檔案系統大小
+   # 通過 /var/lib/docker/overlay2/<container_layer> 計算
+   du -sb /var/lib/docker/overlay2/<container_layer>
+   ```
+
+4. **進程資訊** (`/proc`):
+   ```bash
+   # 獲取容器內的進程列表
+   cat /proc/<container_pid>/cgroup
+   ```
+
+**擷取頻率**:
+- cAdvisor 內部：每秒更新一次容器統計
+- Prometheus 抓取：每 10 秒（由 Prometheus 配置 `scrape_interval: 10s`）
+
+**提供的核心指標**:
+
+**容器資源使用**:
+- `container_cpu_usage_seconds_total`: 容器 CPU 使用時間（秒）
+- `container_cpu_system_seconds_total`: 容器系統 CPU 時間
+- `container_cpu_user_seconds_total`: 容器用戶 CPU 時間
+
+**記憶體指標**:
+- `container_memory_usage_bytes`: 容器記憶體使用量
+- `container_memory_max_usage_bytes`: 記憶體使用峰值
+- `container_memory_cache`: 快取記憶體
+- `container_memory_rss`: RSS 記憶體（Resident Set Size）
+- `container_memory_working_set_bytes`: 工作集記憶體
+
+**網路指標**:
+- `container_network_receive_bytes_total`: 接收位元組數
+- `container_network_transmit_bytes_total`: 傳送位元組數
+- `container_network_receive_packets_total`: 接收封包數
+- `container_network_transmit_packets_total`: 傳送封包數
+
+**檔案系統指標**:
+- `container_fs_usage_bytes`: 檔案系統使用量
+- `container_fs_limit_bytes`: 檔案系統限制
+- `container_fs_reads_bytes_total`: 讀取位元組數
+- `container_fs_writes_bytes_total`: 寫入位元組數
+
+**容器元數據**:
+- `container_last_seen`: 容器最後被觀察到的時間
+- `container_start_time_seconds`: 容器啟動時間
+
+**指標標籤** (Labels):
+每個指標都包含以下標籤用於識別容器：
+- `name`: 容器名稱（如 `log-fastapi-1`）
+- `id`: 容器 ID
+- `image`: 容器映像名稱
+- `container_label_*`: 容器的 Docker labels
+
+**技術原理**:
+- cAdvisor (Container Advisor) 是 Google 開發的容器監控工具
+- 用 Go 語言編寫
+- 核心技術：
+  1. **cgroups v1/v2**: Linux 內核功能，用於資源隔離和限制
+  2. **Docker API**: 獲取容器元數據
+  3. **Network Namespace**: 獲取容器網路統計
+  4. **Overlay FS**: 計算容器檔案系統使用
+
+**cgroups 工作原理**:
+```
+宿主機內核
+    │
+    ├─ /sys/fs/cgroup/cpu/docker/
+    │   ├─ container_1/
+    │   │   └─ cpuacct.usage      ← cAdvisor 讀取
+    │   └─ container_2/
+    │       └─ cpuacct.usage      ← cAdvisor 讀取
+    │
+    └─ /sys/fs/cgroup/memory/docker/
+        ├─ container_1/
+        │   └─ memory.usage_in_bytes  ← cAdvisor 讀取
+        └─ container_2/
+            └─ memory.usage_in_bytes  ← cAdvisor 讀取
+```
+
+**為什麼需要 privileged 模式**:
+- 需要訪問所有容器的 cgroups 資訊
+- 需要讀取 `/dev/kmsg` 內核訊息
+- 需要完整的系統資訊訪問權限
+
+**為什麼需要 `/dev/kmsg`**:
+- 讀取內核日誌以獲取 OOM (Out of Memory) 事件
+- 監控容器是否因記憶體不足被殺掉
+
+**優勢**:
+- ✅ 自動發現所有運行的容器
+- ✅ 提供細粒度的容器資源使用數據
+- ✅ 支援多種容器運行時（Docker、containerd、CRI-O）
+- ✅ 提供 Web UI 可視化介面（http://localhost:18888）
+- ✅ 歷史數據保留（預設 2 分鐘）
+
+**局限性**:
+- ⚠️ 需要特權模式運行（安全風險）
+- ⚠️ 只保留短期歷史數據（需要 Prometheus 長期存儲）
+- ⚠️ 記憶體開銷較大（監控大量容器時）
+
+---
+
+### Exporters 資料流總結
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Exporters 資料擷取流程                         │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Redis Exporter
+   Redis Server (6379)
+        ↓ Redis Protocol
+   [執行 INFO、DBSIZE 等命令]
+        ↓
+   解析並轉換為 Prometheus 指標
+        ↓
+   暴露 HTTP 端點 (9121/metrics)
+
+2. PostgreSQL Exporter
+   PostgreSQL (5432)
+        ↓ SQL 查詢
+   [查詢 pg_stat_* 系統視圖]
+        ↓
+   解析查詢結果並轉換為 Prometheus 指標
+        ↓
+   暴露 HTTP 端點 (9187/metrics)
+
+3. Node Exporter
+   宿主機檔案系統
+        ↓ 檔案讀取
+   [讀取 /proc、/sys 等目錄]
+        ↓
+   解析系統文件並轉換為 Prometheus 指標
+        ↓
+   暴露 HTTP 端點 (9100/metrics)
+
+4. cAdvisor
+   Docker Daemon + cgroups
+        ↓ Docker API + 檔案讀取
+   [調用 Docker API、讀取 cgroups]
+        ↓
+   解析容器資訊並轉換為 Prometheus 指標
+        ↓
+   暴露 HTTP 端點 (8080/metrics)
+
+5. Prometheus 抓取
+   所有 Exporters
+        ↓ HTTP GET
+   Prometheus 定期抓取所有端點
+        ↓
+   存儲到時序資料庫 (TSDB)
+```
+
+**共同特點**:
+- ✅ 所有 Exporters 都暴露 `/metrics` HTTP 端點
+- ✅ 使用 Prometheus 文本格式（OpenMetrics 標準）
+- ✅ 無狀態設計，不存儲歷史數據
+- ✅ 被動模式：等待 Prometheus 主動抓取（Pull 模式）
+
+**關鍵技術對比**:
+
+| Exporter | 資料來源 | 連接方式 | 主要技術 |
+|---------|---------|---------|---------|
+| Redis | Redis Server | TCP 連線 | Redis Protocol, INFO 命令 |
+| PostgreSQL | PostgreSQL | TCP 連線 | SQL 查詢, 系統視圖 |
+| Node | 宿主機系統 | 檔案讀取 | /proc, /sys 偽檔案系統 |
+| cAdvisor | Docker + 內核 | Socket + 檔案 | Docker API, cgroups |
 
 ---
 

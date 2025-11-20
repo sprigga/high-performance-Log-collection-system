@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: 'default'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      # 修正路徑：從 /etc/grafana/provisioning/dashboards 改為 /etc/grafana/dashboards
+      # 以符合 docker-compose 中的 volume 掛載設定
